@@ -1,0 +1,1225 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Genome Regulatory Network Reconstruction</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
+    <style>
+        /* General Layout & Colors */
+        body { font-family: Arial, sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; }
+
+        /* Page Title Bar */
+        #page-title {
+            background-color: #13135f; /* Solid Blue Background */
+            color: #fff;
+            padding: 5px 0;
+            font-weight: bold;
+            letter-spacing: 0.5px;
+            display: flex;
+	    flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 2px;
+            position: relative;
+            overflow: hidden;
+.title-main {
+    font-size: 36px;        
+    font-weight: 750;       
+    letter-spacing: 1px;
+line-height: 1;
+}
+
+.title-sub {
+    font-size: 20px;        
+    font-weight: 400;       
+    opacity: 0.95;
+line-height: 1.2;
+
+}
+
+        }
+
+
+        
+.header-logo {
+    position: absolute;
+    right: 2px;
+    top: 50%;
+    transform: translateY(-50%);
+    height: 50px;    
+    width: auto;
+}
+.header-logo-left {
+    position: absolute;
+    left: 2px;
+    top: 50%;
+    transform: translateY(-50%);
+    height: 50px;
+    width: auto;
+}
+
+
+
+        /* Header Controls */
+        #header-controls {
+            display: flex;
+            padding: 5px 10px;
+            background-color: #e6e6fa;
+            border-bottom: 1px solid #ccc;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
+            min-height: 25px;        /* Prevents header height expansion */
+            box-sizing: border-box;
+        }
+
+        #header-controls h3 { font-size: 16px; margin: 0; }
+
+        /* Main Layout */
+        #main-container { display: flex; flex-grow: 1; overflow: hidden; }
+        #data-view { flex-grow: 1; display: flex; flex-direction: column; position: relative; }
+
+        /* Loading Overlay & Spinner */
+        #loading-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(255, 255, 255, 0.85); display: flex; justify-content: center; align-items: center; z-index: 100; flex-direction: column; font-size: 1.2em; font-weight: bold; }
+        .spinner { border: 4px solid #f3f3f3; border-top: 4px solid #007bff; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin-bottom: 15px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* Stats Panel */
+        #stats-container {
+            width: 250px;
+            padding: 3px 8px 8px 8px;
+            background-color: #f8f8f8;
+            border-right: 2px solid #ccc;
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+    max-height: calc(100vh - 110px);
+    overflow-y: auto;
+        }
+        #stats-container h2 {
+            margin-top: 3px;
+            margin-bottom: 1px;
+        }
+        .stats-box { background-color: #e6e6fa; padding: 8px; border-radius: 5px; font-size: 13px; }
+        .stats-box strong { display: block; margin-top: 1px; color: #1f77b4; font-weight: bold; }
+        .total-nodes-edges { margin-top: 5px; border-top: 1px dashed #ccc; padding-top: 5px; }
+
+        /* Tabs and Content */
+        #tabs { display: flex; border-bottom: 1px solid #ccc; background-color: #e9ecef; }
+        .tab-button { padding: 8px 15px; cursor: pointer; border: none; background: transparent; font-weight: bold; transition: background 0.2s; }
+        .tab-button.active { border-bottom: 2px solid #007bff; color: #007bff; background-color: #fff; }
+
+        /* Tab Content Containers */
+        .tab-content { padding: 10px; flex-grow: 1; overflow-y: auto; display: none; flex-direction: column; /* Needed for controls */ }
+        .tab-content.active { display: flex; /* Changed from block */ }
+
+        /* Network view */
+        #cy { height: 100%; width: 100%; background-color: #fff; flex-grow: 1; /* Allow graph to fill space */ display: none; /* Hide initially */ }
+
+        /* Table style */
+        #regulator-tu-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        #regulator-tu-table thead th { position: sticky; top: 0; background-color: #e9ecef; z-index: 10; }
+        #regulator-tu-table th, #regulator-tu-table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        #regulator-tu-table th { background-color: #f2f2f2; }
+        #search-input { width: 98%; padding: 8px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px; }
+
+        /* Message box styling (FIXED HEIGHT + NO WRAP) */
+        .message-box {
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-weight: bold;
+            margin-left: auto;
+            min-width: 180px;
+            text-align: center;
+            height: auto;
+            line-height: 16px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .error { background-color: #f8d7da; color: #721c24; }
+        .success { background-color: #d4edda; color: #155724; }
+
+        /* Footer note */
+        #footer-note { font-size: 10px; color: #555; text-align: center; padding: 4px 0; background-color: #f5f5f5; border-top: 1px solid #ddd; }
+
+        /* Style for network control buttons */
+        #network-controls {
+    display: none;
+    padding: 2px 1px;
+    margin-bottom: 6px;
+    border-bottom: 1px solid #eee;
+    flex-shrink: 0;
+    font-size: 12px;               
+    line-height: 1.2;
+}
+
+#network-controls button {
+    padding: 2px 6px;              
+    margin-right: 4px;
+    font-size: 12px;
+    height: 22px;                  
+    line-height: 18px;
+}
+
+        #network-controls button:hover {
+            background-color: #e0e0e0;
+        }
+        
+   #network-controls input[type="text"] {
+    padding: 2px 6px;
+    height: 14px;
+    font-size: 12px;
+    width: 98px;  
+    margin-left: 0;                
+}
+
+/* =======================
+   Network Legend (Bottom Right)
+   ======================= */
+#network-legend {
+    position: absolute;
+    bottom: 5px;
+    right: 5px;
+width: fit-content;
+    max-width: 220px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    padding: 10px;
+    font-size: 12px;
+    z-index: 20;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+}
+
+.legend-title {
+    font-weight: bold;
+    margin-bottom: 6px;
+    text-align: center;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    margin-bottom: 5px;
+    gap: 8px;
+}
+
+/* ----- Node symbols ----- */
+.legend-node {
+    width: 14px;
+    height: 14px;
+    display: inline-block;
+    border: 1px solid #333;
+}
+
+.legend-node.regulator {
+    background: #FF6961;
+    transform: rotate(45deg);
+}
+
+.legend-node.tugene {
+    background: #48cae4;
+    border-radius: 50%;
+}
+
+.legend-node.regulator.plasmid {
+    background: #ffff00;         
+    border: 2px solid #4B0082;
+}
+
+/* TU gene present in plasmid */
+.legend-node.tugene.plasmid {
+    background: #7cfc00;         
+    border: 2px solid #4B0082;
+}
+/* ----- Edge symbols ----- */
+.legend-edge {
+    width: 22px;
+    height: 2px;
+    display: inline-block;
+}
+
+.legend-edge.activator {
+    background: green;
+}
+
+.legend-edge.repressor {
+    background: red;
+}
+
+
+.legend-edge.tu {
+    background: black;
+    border-top: 1px dashed black;
+}
+.toolbar-separator {
+    margin: 0 6px;         /* tight spacing on both sides */
+    font-size: 12px;
+}
+/* Compact GFF gene table */
+.gff-table-wrapper {
+    max-width: 700px;   /* 🔹 controls table width */
+    margin: 0 auto;
+}
+
+.gff-table {
+    width: 100%;
+    table-layout: fixed;
+    font-size: 13px;
+}
+
+.gff-table th,
+.gff-table td {
+    padding: 4px 6px;
+    line-height: 1.25;
+    vertical-align: top;
+    word-break: break-word;
+}
+
+
+    </style>
+</head>
+<body>
+
+    <div id="page-title">
+<img src="SASTRA_logo.jpeg" class="header-logo-left">
+
+    <div class="title-main">ReguBac</div>
+    <div class="title-sub">Regulatory Network Construction Tool for Bacterial Genome</div>
+
+    <img src="bic_logo.jpeg" class="header-logo">
+
+</div>
+
+
+    <div id="header-controls">
+        <h3>GFF File</h3>
+        <input type="file" id="file2" accept=".gff, .txt" required>
+	<h3>Genome File</h3>
+	<input type="file" id="genome-file" accept=".fasta,.fna">
+
+        <button onclick="processFiles()">Build Network</button>
+        <div id="message" class="message-box"></div>
+    </div>
+
+    <div id="main-container">
+        <div id="stats-container">
+            <h2>Network Statistics</h2>
+            <div class="stats-box">
+                No. of genes in GFF file: <strong id="stat-gff">0</strong>
+                No. of regulators (Source): <strong id="stat-regulators">0</strong>
+                No. of transcription units: <strong id="stat-tus">0</strong>
+                No. of unique TuGenes (Target): <strong id="stat-tugene-targets">0</strong>
+		No. of plasmids in genome: <strong id="stat-plasmids">0</strong>
+		No. of chromosome genes: <strong id="stat-chr-genes">0</strong>
+		No. of plasmid genes: <strong id="stat-plasmid-genes">0</strong>
+		No. of overlapping genes: <strong id="stat-overlap-genes">0</strong>
+
+
+                <div class="total-nodes-edges">
+                    Total Edges (Interaction): <strong id="stat-edges">0</strong>
+                    Total Nodes: <strong id="stat-nodes">0</strong>
+                </div>
+            </div>
+
+            <button onclick="downloadSIF()" style="width: 100%; margin-top: 15px;">Download Network (.sif)</button>
+            <button onclick="downloadGFFList()" style="width: 100%; margin-top: 3px;">Download GFF Gene List (.txt)</button>
+            <button onclick="downloadCSV()" style="width: 100%; margin-top: 3px;">Download Regulator-TUs (.csv)</button>
+
+        </div>
+
+        <div id="data-view">
+            <div id="loading-overlay" style="display: none;">
+                <div class="spinner"></div>
+                Building Network... This may take a moment.
+            </div>
+
+            <div id="tabs">
+                <button class="tab-button active" onclick="showTab('network', this)">1) Genome Regulatory Network</button>
+                <button class="tab-button" onclick="showTab('gff', this)">2) Genes in GFF File</button>
+                <button class="tab-button" onclick="showTab('regulator_tu', this)">3) Regulator - TUs</button>
+                <button class="tab-button" onclick="showTab('amr_gene', this)">4) AMR Genes in GFF File</button>
+            </div>
+
+            <div id="network-content" class="tab-content active">
+		
+                <div id="network-controls" style="padding-bottom: 10px; border-bottom: 1px solid #eee; margin-bottom: 10px; flex-shrink: 0;">
+		
+                    <button onclick="resetView()">Reset View</button>
+                    <button onclick="zoomIn()">Zoom In (+)</button>
+                    <button onclick="zoomOut()">Zoom Out (-)</button>
+                    <button onclick="downloadPNG()">Download PNG</button>
+		    <button onclick="highlightPlasmidGenes()">Highlight Plasmid Genes</button>
+		    <button onclick="highlightAMRGenes()">Highlight AMR Genes</button>
+
+
+                    <span class="toolbar-separator">|</span>
+                    <input type="text" id="regulator-search-input" placeholder="Enter Gene Name...">
+                    <button onclick="highlightRegulator()">Highlight</button>
+                    <button onclick="clearHighlight()">Show All</button>
+                </div>
+                <div id="cy"></div>
+<!-- Network Legend -->
+<div id="network-legend">
+    <div class="legend-title">Legend</div>
+
+    <div class="legend-item">
+        <span class="legend-node regulator"></span>
+        <span>Regulator (Chromosome)</span>
+    </div>
+
+    <div class="legend-item">
+        <span class="legend-node tugene"></span>
+        <span>TU Gene (Chromosome)</span>
+    </div>
+
+
+    <div class="legend-item">
+        <span class="legend-node regulator plasmid"></span>
+        <span>Regulator (Plasmid overlap)</span>
+    </div>
+
+    <div class="legend-item">
+        <span class="legend-node tugene plasmid"></span>
+        <span>TU Gene (Plasmid overlap)</span>
+    </div>
+
+
+    <hr>
+
+    <div class="legend-item">
+        <span class="legend-edge activator"></span>
+        <span>Activator</span>
+    </div>
+
+    <div class="legend-item">
+        <span class="legend-edge repressor"></span>
+        <span>Repressor</span>
+    </div>
+
+    <div class="legend-item">
+        <span class="legend-edge tu"></span>
+        <span>Transcription Unit Link</span>
+    </div>
+</div>
+
+            </div>
+
+          <div id="gff-content" class="tab-content">
+    <p>Total Genes Extracted: <strong id="gff-count">0</strong></p>
+
+    <div class="gff-table-wrapper">
+        <table class="gff-table">
+            <thead>
+                <tr>
+                    <th>Chromosome Genes</th>
+                    <th>Plasmid Genes</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td id="chromosome-gff-list"></td>
+                    <td id="plasmid-gff-list"></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+
+
+            <div id="regulator_tu-content" class="tab-content">
+                <p>Filtered Regulatory Units: <strong id="tu-count">0</strong></p>
+                <input type="text" id="search-input" onkeyup="filterTable()" placeholder="Search Regulator or Gene (e.g., gadW or hdeA)...">
+                <div id="regulator-tu-table-container"></div>
+            </div>
+
+            <div id="amr_gene-content" class="tab-content">
+                <p>Total AMR Genes Found: <strong id="amr-count">0</strong></p>
+                <div id="amr-list-content"></div>
+            </div>
+
+        </div>
+    </div>
+
+    <div id="footer-note">
+        <p style="font-size:10px; margin: 0;">Network construction is based on data from RegulonDB.</p>
+    </div>
+
+<script>
+const API_URL = 'http://127.0.0.1:5000/process_files';
+let GLOBAL_NETWORK_DATA = null;
+let GFF_FILENAME = "Network_";
+let cy = null;
+
+// Ensure network controls are hidden when the page loads
+document.addEventListener('DOMContentLoaded', (event) => {
+    const networkControls = document.getElementById('network-controls');
+    if (networkControls) {
+        networkControls.style.display = 'none';
+    }
+    // Show the default active tab content (#network-content)
+    const activeTabButton = document.querySelector('#tabs .tab-button.active');
+    if (activeTabButton) {
+        // Extract tabId from onclick attribute
+        const onclickAttr = activeTabButton.getAttribute('onclick');
+        const tabIdMatch = onclickAttr ? onclickAttr.match(/showTab\('([^']+)'/) : null;
+        if (tabIdMatch && tabIdMatch[1]) {
+            showTab(tabIdMatch[1], activeTabButton);
+        }
+    }
+});
+
+
+document.getElementById('file2').addEventListener('change', function(e) {
+    const fileName = e.target.files[0].name.replace(/\.[^/.]+$/, "");
+    GFF_FILENAME = fileName + "_";
+});
+
+// ===================================
+// FILE VALIDATION FUNCTION - NEW
+// ===================================
+function validateFileExtension(file) {
+    const fileName = file.name.toLowerCase();
+    const validExtensions = ['.gff', '.gff3'];
+    const fileExtension = fileName.substring(fileName.lastIndexOf('.'));
+    
+    return validExtensions.includes(fileExtension);
+}
+// ===================================
+
+// ===================================
+// THIS FUNCTION IS NOW MODIFIED
+// ===================================
+function showTab(tabId, buttonElement) {
+    // Hide all tab content sections first to reset display property
+    document.querySelectorAll('.tab-content').forEach(el => {
+        el.classList.remove('active');
+        el.style.display = 'none'; // Explicitly hide
+    });
+
+    // Get the selected tab content section
+    const activeTabContent = document.getElementById(tabId + '-content');
+    if (!activeTabContent) return; // Exit if the content div doesn't exist
+
+    // Show the selected tab content section using its intended display style (flex for network, block for others)
+    activeTabContent.classList.add('active');
+    activeTabContent.style.display = (tabId === 'network') ? 'flex' : 'block'; // Use flex for network, block otherwise
+
+    // Update active state for tab buttons
+    document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+    buttonElement.classList.add('active');
+
+    // --- Show/Hide Network Controls ---
+    const networkControls = document.getElementById('network-controls'); // Get the controls div
+    const cyDiv = document.getElementById('cy'); // Get the Cytoscape container
+
+    if (tabId === 'network') {
+        networkControls.style.display = 'block'; // Or 'flex' if you arrange buttons differently
+        cyDiv.style.display = 'block'; // Make sure #cy is visible
+        if (cy) {
+            // Need a slight delay for flexbox/block display changes before resizing
+            setTimeout(() => {
+                cy.resize();
+                cy.fit();
+                cy.center();
+            }, 50); // 50ms delay
+        }
+    } else {
+        networkControls.style.display = 'none'; // Hide controls for other tabs
+        cyDiv.style.display = 'none'; // Make sure #cy div is hidden
+    }
+    // --- END ---
+}
+// ===================================
+
+
+function setMessage(text, type = 'ready') {
+    const msg = document.getElementById('message');
+    msg.textContent = text;
+    msg.className = 'message-box ' + (type === 'error' ? 'error' : (type === 'success' ? 'success' : ''));
+}
+
+function displayStats(stats) {
+    document.getElementById('stat-gff').textContent = stats.gff_genes;
+    document.getElementById('stat-regulators').textContent = stats.regulators;
+    document.getElementById('stat-tus').textContent = stats.tus;
+    document.getElementById('stat-tugene-targets').textContent = stats.tugene_targets;
+    document.getElementById('stat-edges').textContent = stats.edges;
+    document.getElementById('stat-nodes').textContent = stats.nodes;
+    document.getElementById('stat-plasmids').textContent = stats.plasmid_count;
+    document.getElementById('stat-chr-genes').textContent = stats.chromosome_gene_count;
+    document.getElementById('stat-plasmid-genes').textContent = stats.plasmid_gene_count;
+    document.getElementById('stat-overlap-genes').textContent = stats.overlap_gene_count;
+}
+
+function displayGFFList(chromosomeGenes, plasmidGenes) {
+    const total = chromosomeGenes.length + plasmidGenes.length;
+
+    document.getElementById('gff-count').textContent = total;
+
+    document.getElementById('chromosome-gff-list').innerHTML =
+        chromosomeGenes.length ? chromosomeGenes.join('<br>') : '<i>No chromosome genes</i>';
+
+    document.getElementById('plasmid-gff-list').innerHTML =
+        plasmidGenes.length ? plasmidGenes.join('<br>') : '<i>No plasmid genes</i>';
+}
+
+
+
+function displayAMRGeneList(amrGeneList) {
+    document.getElementById('amr-count').textContent = amrGeneList.length;
+    if (amrGeneList.length > 0) {
+        document.getElementById('amr-list-content').innerHTML = amrGeneList.join('<br>');
+    } else {
+        document.getElementById('amr-list-content').innerHTML = '<p>No AMR genes found in GFF file.</p>';
+    }
+}
+
+
+function displayRegulatorTUTable(tuList) {
+    const container = document.getElementById('regulator-tu-table-container');
+    document.getElementById('tu-count').textContent = tuList.length;
+
+    if (tuList.length === 0) {
+        container.innerHTML = "<p>No regulatory units found after filtering.</p>";
+        return;
+    }
+
+    const searchValue = document.getElementById('search-input').value;
+    let html = '<table id="regulator-tu-table"><thead><tr><th>Regulator</th><th>Type</th><th>Transcription Unit Genes</th></tr></thead><tbody>';
+
+    tuList.forEach(row => {
+        html += `<tr
+                    data-reg="${row.Regulator.toLowerCase()}"
+                    data-tu="${row.Transcription_Unit_Genes.toLowerCase()}">
+            <td>${row.Regulator}</td>
+            <td>${row.Regulation_Type}</td>
+            <td>${row.Transcription_Unit_Genes.replace(/;/g, '; ')}</td>
+        </tr>`;
+    });
+    html += '</tbody></table>';
+    container.innerHTML = html;
+
+    if (searchValue) {
+        filterTable();
+    }
+}
+
+function filterTable() {
+    const input = document.getElementById('search-input').value.toLowerCase();
+    const tableBody = document.querySelector('#regulator-tu-table tbody');
+    const rows = tableBody ? tableBody.getElementsByTagName('tr') : [];
+
+    for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const regulator = row.getAttribute('data-reg');
+        const tu_genes = row.getAttribute('data-tu');
+
+        if (regulator.includes(input) || tu_genes.includes(input)) {
+            row.style.display = "";
+        } else {
+            row.style.display = "none";
+        }
+    }
+}
+
+function downloadData(content, filename, mimeType) {
+    const blob = new Blob([content], { type: mimeType + ';charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+function downloadCSV() {
+    if (!GLOBAL_NETWORK_DATA || !GLOBAL_NETWORK_DATA.regulator_tu_list.length) {
+        alert("No table data to download.");
+        return;
+    }
+    const data = GLOBAL_NETWORK_DATA.regulator_tu_list;
+
+    let csvContent = "Regulator,Regulation_Type,Transcription_Unit_Genes\n";
+    data.forEach(row => {
+        const rowArray = [
+            row.Regulator,
+            row.Regulation_Type,
+            `"${row.Transcription_Unit_Genes}"`
+        ];
+        csvContent += rowArray.join(",") + "\n";
+    });
+
+    downloadData(csvContent, GFF_FILENAME + 'regulator_TUs.csv', 'text/csv');
+}
+
+function downloadSIF() {
+    if (!GLOBAL_NETWORK_DATA || !GLOBAL_NETWORK_DATA.edges.length) {
+        alert("No network data to download.");
+        return;
+    }
+    const edges = GLOBAL_NETWORK_DATA.edges;
+
+    let sifContent = "";
+    edges.forEach(edge => {
+        // Handle the new 'tu_link' type for SIF export
+        let interaction = edge.type.replace(/r$/, '');
+        if (interaction === 'tu_link') {
+            interaction = 'links-to'; // Or any plain-text descriptor
+        }
+        sifContent += `${edge.source}\t${interaction}\t${edge.target}\n`;
+    });
+
+    downloadData(sifContent, GFF_FILENAME + 'network.sif', 'text/plain');
+}
+
+function downloadGFFList() {
+    if (!GLOBAL_NETWORK_DATA) {
+        alert("No GFF gene list data to download.");
+        return;
+    }
+
+    const chr = GLOBAL_NETWORK_DATA.chromosome_gene_list || [];
+    const plasmid = GLOBAL_NETWORK_DATA.plasmid_gene_list || [];
+
+    let content = "### Chromosome genes\n";
+    content += chr.join('\n');
+
+    content += "\n\n### Plasmid genes\n";
+    content += plasmid.join('\n');
+
+    downloadData(content, GFF_FILENAME + 'gene_list.txt', 'text/plain');
+}
+
+async function processFiles() {
+    const file2 = document.getElementById('file2').files[0];
+    const genomeFile = document.getElementById('genome-file').files[0];
+
+    if (!genomeFile) {
+       setMessage("Please select a genome FASTA/FNA file.", 'error');
+       return;
+   }
+    if (!file2) {
+        setMessage("Please select a GFF file.", 'error');
+        return;
+    }
+
+    // ===================================
+    // FILE EXTENSION VALIDATION - NEW
+    // ===================================
+    if (!validateFileExtension(file2)) {
+        setMessage("Invalid file format! Please upload a .gff.", 'error');
+        return;
+    }
+    // ===================================
+
+    GFF_FILENAME = file2.name.replace(/\.[^/.]+$/, "") + "_";
+
+    document.getElementById('loading-overlay').style.display = 'flex';
+    document.querySelector('button').disabled = true;
+    setMessage("Processing files...", 'ready');
+
+    try {
+        const formData = new FormData();
+        formData.append('file2', file2);
+	formData.append('genome', genomeFile);
+
+        const response = await fetch(API_URL, {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await response.json();
+
+        if (response.ok && data.success) {
+            // ===================================
+            // NETWORK EXISTENCE VALIDATION - NEW
+            // ===================================
+            if (!data.edges || data.edges.length === 0) {
+                setMessage("No regulatory network found in this GFF file!", 'error');
+                displayStats(data.stats || {gff_genes: data.gff_list ? data.gff_list.length : 0, regulators: 0, tus: 0, tugene_targets: 0, edges: 0, nodes: 0});
+                displayGFFList(
+    data.chromosome_gene_list || [],
+    data.plasmid_gene_list || []
+);
+                displayRegulatorTUTable([]);
+                displayAMRGeneList(data.amr_gene_list || []);
+                drawNetwork([], []);
+                showTab('network', document.querySelector('#tabs .tab-button'));
+                return;
+            }
+            // ===================================
+
+            setMessage(`Success! Found ${data.edges.length} connections.`, 'success');
+
+            GLOBAL_NETWORK_DATA = data;
+
+            displayStats(data.stats);
+            displayGFFList(data.chromosome_gene_list || [],data.plasmid_gene_list || []);
+
+            displayRegulatorTUTable(data.regulator_tu_list);
+            displayAMRGeneList(data.amr_gene_list || []);
+
+            drawNetwork(data.nodes, data.edges);
+            // Default to network tab on successful load
+            showTab('network', document.querySelector('#tabs .tab-button'));
+
+        } else {
+            // Handle server-side errors (including empty networks)
+            if (data.error && data.error.toLowerCase().includes('network')) {
+                setMessage("No regulatory network found in this GFF file!", 'error');
+            } else {
+                setMessage(`Error: ${data.error || 'Failed to process GFF file.'}`, 'error');
+            }
+            
+            displayStats(data.stats || {gff_genes: 0, regulators: 0, tus: 0, tugene_targets: 0, edges: 0, nodes: 0});
+            displayGFFList(data.gff_list || []);
+            displayRegulatorTUTable([]);
+            displayAMRGeneList(data.amr_gene_list || []);
+            drawNetwork([], []);
+            
+            const firstTabButton = document.querySelector('#tabs .tab-button');
+            showTab('network', firstTabButton);
+        }
+
+    } catch (error) {
+        setMessage("Connection failed. Is the Python server running?", 'error');
+        displayStats({gff_genes: 0, regulators: 0, tus: 0, tugene_targets: 0, edges: 0, nodes: 0});
+        displayGFFList([]);
+        displayRegulatorTUTable([]);
+        displayAMRGeneList([]);
+        drawNetwork([], []);
+        
+        const firstTabButton = document.querySelector('#tabs .tab-button');
+        showTab('network', firstTabButton);
+    } finally {
+        document.getElementById('loading-overlay').style.display = 'none';
+        document.querySelector('button').disabled = false;
+    }
+}
+// ===================================
+
+
+// ===================================
+// Network Navigation Functions
+// ===================================
+// Modify resetView to include clearHighlight
+function resetView() {
+    if (cy) {
+        clearHighlight(); // Also clear highlights on reset
+        cy.fit(); // Fits the graph to the viewport
+        cy.center(); // Centers the graph
+    }
+}
+
+function zoomIn() {
+    if (cy) {
+        cy.zoom(cy.zoom() * 1.2); // Increase zoom by 20%
+        cy.center(); // Recenter after zoom
+    }
+}
+
+function zoomOut() {
+    if (cy) {
+        cy.zoom(cy.zoom() * 0.8); // Decrease zoom by 20%
+        cy.center(); // Recenter after zoom
+    }
+}
+
+function downloadPNG() {
+    if (cy) {
+        // Render at higher resolution for better quality download
+        const png64 = cy.png({ output: 'base64uri', full: true, scale: 3 });
+        const link = document.createElement('a');
+        link.href = png64;
+        link.setAttribute('download', GFF_FILENAME + 'network_view.png'); // Use the dynamic filename
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    } else {
+        alert("Network graph is not available to download.");
+    }
+}
+// ===================================
+
+// ===================================
+// CORRECTED REGULATOR HIGHLIGHTING BASED ON REGULATOR-TU TABLE
+// ===================================
+function highlightRegulator() {
+    if (!cy) return; // Make sure the graph exists
+    
+    const regulatorName = document.getElementById('regulator-search-input').value.trim().toLowerCase();
+    
+    if (!regulatorName) {
+        alert('Please enter a regulator name.');
+        return;
+    }
+    
+    clearHighlight(); // Clear previous highlights first
+    
+    const regulatorNode = cy.getElementById(regulatorName);
+    
+    // Check if regulator exists in the network
+    if (regulatorNode.empty() || regulatorNode.data('type') !== 'regulator') {
+        alert(`Regulator "${regulatorName}" not found or is not a regulator node in the current network.`);
+        return;
+    }
+    
+    // Check if we have the regulator-TU table data
+    if (!GLOBAL_NETWORK_DATA || !GLOBAL_NETWORK_DATA.regulator_tu_list) {
+        alert('Regulator-TU table data is not available.');
+        return;
+    }
+    
+    // Start with empty collection for elements to highlight
+    let elementsToHighlight = cy.collection();
+    
+    // 1. Add the searched regulator itself
+    elementsToHighlight = elementsToHighlight.union(regulatorNode);
+    
+    // 2. Find all TU genes regulated by this regulator from the table data
+    const regulatorTUEntries = GLOBAL_NETWORK_DATA.regulator_tu_list.filter(entry => 
+        entry.Regulator.toLowerCase() === regulatorName
+    );
+    
+    if (regulatorTUEntries.length === 0) {
+        alert(`No regulatory data found for regulator "${regulatorName}" in the regulator-TU table.`);
+        return;
+    }
+    
+    // 3. Extract all TU genes from the table entries
+    const allTUGenes = new Set();
+    regulatorTUEntries.forEach(entry => {
+        // Split the Transcription_Unit_Genes by semicolon and clean up
+        const tuGenes = entry.Transcription_Unit_Genes.split(';').map(gene => gene.trim().toLowerCase());
+        tuGenes.forEach(gene => {
+            if (gene) { // Skip empty strings
+                allTUGenes.add(gene);
+            }
+        });
+    });
+    
+    // 4. Find these TU gene nodes in the network and add them to highlight
+    allTUGenes.forEach(geneName => {
+        const geneNode = cy.getElementById(geneName);
+        if (!geneNode.empty()) {
+            elementsToHighlight = elementsToHighlight.union(geneNode);
+        }
+    });
+    
+    // 5. Add all regulatory edges FROM the regulator TO the TU genes
+    const regulatoryEdges = regulatorNode.edgesWith(elementsToHighlight).filter('edge[type!="tu_link"]');
+    elementsToHighlight = elementsToHighlight.union(regulatoryEdges);
+    
+    // 6. Add all TU-link edges BETWEEN the TU genes (to show complete transcription units)
+    const tuLinkEdges = elementsToHighlight.nodes().edgesWith(elementsToHighlight.nodes()).filter('edge[type="tu_link"]');
+    elementsToHighlight = elementsToHighlight.union(tuLinkEdges);
+    
+    // Apply highlighting
+    elementsToHighlight.addClass('highlighted');
+    
+    // Dim all other elements
+    cy.elements().difference(elementsToHighlight).addClass('dimmed');
+    
+    // Zoom to highlighted area
+    cy.animate({
+        fit: {
+            eles: elementsToHighlight,
+            padding: 50
+        },
+        duration: 500
+    });
+    
+    // Log for debugging
+    console.log(`Highlighted regulator: ${regulatorName}`);
+    console.log(`Found ${regulatorTUEntries.length} regulatory entries`);
+    console.log(`Highlighted ${allTUGenes.size} unique TU genes:`, Array.from(allTUGenes));
+    console.log(`Total highlighted elements: ${elementsToHighlight.length}`);
+}
+
+function clearHighlight() {
+    if (cy) {
+        cy.elements().removeClass('highlighted dimmed');
+    }
+}
+// ===================================
+
+
+function drawNetwork(nodesData, edgesData) {
+    const elements = [
+        ...nodesData.map(node => ({
+        data: {
+            id: node.id,
+            label: node.id,
+            type: node.type,
+            ...(GLOBAL_NETWORK_DATA.plasmid_overlap_genes &&
+               GLOBAL_NETWORK_DATA.plasmid_overlap_genes.includes(node.id)
+               ? { plasmid_overlap: true }
+               : {})
+        }
+    })),
+    ...edgesData.map((edge, index) => ({
+        data: { id: 'e' + index, source: edge.source, target: edge.target, type: edge.type }
+    }))
+];
+
+    if (cy) {
+        cy.destroy();
+    }
+
+    cy = cytoscape({
+        container: document.getElementById('cy'),
+        elements: elements,
+        layout: {
+            name: 'cose',
+            animate: 'end',
+            padding: 10,
+            idealEdgeLength: 100,
+            nodeRepulsion: 400000,
+            gravity: 80,
+            nestingFactor: 5,
+            edgeElasticity: 100
+        },
+        style: [
+            // --- Node and Edge Base Styles ---
+            { selector: 'node', style: { 'content': 'data(label)', 'font-size': '16px', 'text-valign': 'center', 'text-halign': 'center', 'padding': '8px', 'color': '#333', 'background-color': '#ADD8E6', 'shape': 'ellipse', 'transition-property': 'opacity, border-color, border-width', 'transition-duration': '0.3s' }}, // Added transition properties
+
+            { selector: 'node[type="regulator"]', style: { 'shape': 'diamond', 'background-color': '#FF6961', 'border-width': 2, 'border-color': '#CD5C5C', 'font-weight': 'bold',
+    'width': 45,
+    'height': 45,
+    'font-size': 16,
+    'text-wrap': 'wrap',
+    'text-max-width': 80}},
+
+            { selector: 'node[type="tugene"]', style: { 'shape': 'ellipse', 'background-color': '#48cae4', }},
+{
+    selector: 'node[type="regulator"][plasmid_overlap]',
+    style: {
+        'background-color': '#ffff00',   // regulator
+        'border-color': '#4B0082'
+    }
+},
+{
+    selector: 'node[type="tugene"][plasmid_overlap]',
+    style: {
+        'background-color': '#7cfc00',   //  TU gene
+        'border-color': '#4B0082'
+    }
+},
+            { selector: 'edge', style: { 'curve-style': 'bezier', 'width': 2, 'transition-property': 'opacity, width, line-color, target-arrow-color', 'transition-duration': '0.3s' }}, // Added transition properties
+
+            // --- Specific Edge Type Styles ---
+            {
+                selector: 'edge[type="tu_link"]',
+                style: {
+                    'line-color': '#000',                    // Black color
+                    'target-arrow-shape': 'none',            // No arrow
+                    'width': 1.5,
+                    'curve-style': 'straight'
+                }
+            },
+            { selector: 'edge[type="activator"]', style: { 'line-color': 'green', 'target-arrow-color': 'green', 'target-arrow-shape': 'triangle', }},
+            { selector: 'edge[type="repressor"]', style: { 'line-color': 'red', 'target-arrow-color': 'red', 'target-arrow-shape': 'tee', }},
+            { selector: 'edge[type="dual"]', style: { 'line-color': 'blue', 'target-arrow-color': 'blue', 'target-arrow-shape': 'triangle', }},
+
+            // --- Styles for Highlighting/Dimming ---
+            {
+                selector: '.dimmed', // Style for elements that are NOT highlighted
+                style: {
+                    'opacity': 0.25 // Make them more transparent
+                }
+            },
+            {
+                selector: '.highlighted', // Style for elements that ARE highlighted
+                style: {
+                    'opacity': 1, // Ensure they are fully opaque
+                    'z-index': 10 // Bring highlighted elements to the front
+                }
+            },
+            {   // Make highlighted nodes stand out
+                selector: 'node.highlighted',
+                style: {
+                     'border-width': 3, // Make border thicker
+                     'border-color': '#000' // Black border
+                }
+            },
+            // --- ENHANCED EDGE HIGHLIGHTING WITH ORIGINAL COLORS ---
+            {   // Highlighted activator edges - keep green but make them thicker
+                selector: 'edge[type="activator"].highlighted',
+                style: {
+                    'width': 3, // Thicker width
+                    'line-color': 'green', // Keep original green color
+                    'target-arrow-color': 'green' // Keep green arrow
+                }
+            },
+            {   // Highlighted repressor edges - keep red but make them thicker
+                selector: 'edge[type="repressor"].highlighted',
+                style: {
+                    'width': 3, // Thicker width
+                    'line-color': 'red', // Keep original red color
+                    'target-arrow-color': 'red' // Keep red arrow
+                }
+            },
+            {   // Highlighted dual edges - keep blue but make them thicker
+                selector: 'edge[type="dual"].highlighted',
+                style: {
+                    'width': 3, // Thicker width
+                    'line-color': 'blue', // Keep original blue color
+                    'target-arrow-color': 'blue' // Keep blue arrow
+                }
+            },
+            { // Highlighted TU links - keep black but make them thicker
+                selector: 'edge[type="tu_link"].highlighted',
+                style: {
+                    'width': 2, // Thicker than normal (normal is 1.5)
+                    'line-color': '#000', // Keep original black color
+                    'target-arrow-color': '#000' // Keep black (though tu_link has no arrow)
+                }
+            }
+        ]
+    });
+    // cy.fit(); // Removed initial fit here, as showTab handles it better after display change
+}
+function highlightPlasmidGenes() {
+    if (!cy || !GLOBAL_NETWORK_DATA) return;
+
+    clearHighlight();
+
+    const plasmidGenes = new Set(GLOBAL_NETWORK_DATA.plasmid_overlap_genes || []);
+    if (plasmidGenes.size === 0) {
+        alert("No plasmid-associated genes found in this network.");
+        return;
+    }
+
+    let highlightedNodes = cy.collection();
+
+    // ---------- STEP 1: seed plasmid nodes ----------
+    plasmidGenes.forEach(gene => {
+        const node = cy.getElementById(gene);
+        if (!node.empty()) {
+            highlightedNodes = highlightedNodes.union(node);
+
+            // If plasmid gene is a regulator → add its TU targets
+            if (node.data('type') === 'regulator') {
+                const regEdges = node.connectedEdges('edge[type!="tu_link"]');
+                regEdges.forEach(edge => {
+                    const other = edge.source().id() === node.id()
+                        ? edge.target()
+                        : edge.source();
+                    highlightedNodes = highlightedNodes.union(other);
+                });
+            }
+        }
+    });
+
+    // ---------- STEP 2: expand TU chains ----------
+    let expanded = true;
+    while (expanded) {
+        expanded = false;
+        highlightedNodes.forEach(node => {
+            node.connectedEdges('edge[type="tu_link"]').forEach(edge => {
+                const other = edge.source().id() === node.id()
+                    ? edge.target()
+                    : edge.source();
+
+                if (!highlightedNodes.contains(other)) {
+                    highlightedNodes = highlightedNodes.union(other);
+                    expanded = true;
+                }
+            });
+        });
+    }
+
+    // ---------- STEP 3: select edges ONLY if both nodes are highlighted ----------
+    let highlightedEdges = cy.edges().filter(edge =>
+        highlightedNodes.contains(edge.source()) &&
+        highlightedNodes.contains(edge.target())
+    );
+
+    const elementsToHighlight = highlightedNodes.union(highlightedEdges);
+
+    // ---------- STEP 4: apply highlight + dim ----------
+    elementsToHighlight.addClass('highlighted');
+    cy.elements().difference(elementsToHighlight).addClass('dimmed');
+
+    // ---------- STEP 5: zoom ----------
+    cy.animate({
+        fit: { eles: elementsToHighlight, padding: 50 },
+        duration: 500
+    });
+}
+function highlightAMRGenes() {
+    if (!cy || !GLOBAL_NETWORK_DATA) return;
+
+    clearHighlight();
+
+    const amrGenes = new Set(GLOBAL_NETWORK_DATA.amr_gene_list || []);
+    if (amrGenes.size === 0) {
+        alert("No AMR genes found in this network.");
+        return;
+    }
+
+    let highlightedNodes = cy.collection();
+
+    // ---------- STEP 1: seed AMR nodes ----------
+    amrGenes.forEach(gene => {
+        const node = cy.getElementById(gene.toLowerCase());
+        if (!node.empty()) {
+            highlightedNodes = highlightedNodes.union(node);
+
+            // If AMR gene is a regulator → include its TU targets
+            if (node.data('type') === 'regulator') {
+                node.connectedEdges('edge[type!="tu_link"]').forEach(edge => {
+                    const other = edge.source().id() === node.id()
+                        ? edge.target()
+                        : edge.source();
+                    highlightedNodes = highlightedNodes.union(other);
+                });
+            }
+        }
+    });
+
+    // ---------- STEP 2: expand TU chains ----------
+    let expanded = true;
+    while (expanded) {
+        expanded = false;
+        highlightedNodes.forEach(node => {
+            node.connectedEdges('edge[type="tu_link"]').forEach(edge => {
+                const other = edge.source().id() === node.id()
+                    ? edge.target()
+                    : edge.source();
+
+                if (!highlightedNodes.contains(other)) {
+                    highlightedNodes = highlightedNodes.union(other);
+                    expanded = true;
+                }
+            });
+        });
+    }
+
+    // ---------- STEP 3: select edges ONLY if both nodes are highlighted ----------
+    const highlightedEdges = cy.edges().filter(edge =>
+        highlightedNodes.contains(edge.source()) &&
+        highlightedNodes.contains(edge.target())
+    );
+
+    const elementsToHighlight = highlightedNodes.union(highlightedEdges);
+
+    // ---------- STEP 4: apply highlight + dim ----------
+    elementsToHighlight.addClass('highlighted');
+    cy.elements().difference(elementsToHighlight).addClass('dimmed');
+
+    // ---------- STEP 5: zoom ----------
+    cy.animate({
+        fit: { eles: elementsToHighlight, padding: 50 },
+        duration: 500
+    });
+}
+
+
+</script>
+</body>
+</html>
